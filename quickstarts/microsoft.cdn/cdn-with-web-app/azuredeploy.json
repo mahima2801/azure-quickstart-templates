@@ -5,36 +5,16 @@
     "_generator": {
       "name": "bicep",
       "version": "0.5.6.12127",
-      "templateHash": "6815885842748664804"
+      "templateHash": "10602523904429381366"
     }
   },
   "parameters": {
-    "profileName": {
-      "type": "string",
-      "defaultValue": "[format('cdn-{0}', uniqueString(resourceGroup().id))]",
-      "metadata": {
-        "description": "Name of the CDN Profile"
-      }
-    },
-    "endpointName": {
-      "type": "string",
-      "defaultValue": "[format('endpoint-{0}', uniqueString(resourceGroup().id))]",
-      "metadata": {
-        "description": "Name of the CDN Endpoint, must be unique"
-      }
-    },
-    "serverFarmName": {
-      "type": "string",
-      "defaultValue": "[format('asp-{0}', uniqueString(resourceGroup().id))]",
-      "metadata": {
-        "description": "Name of the App Service Plan"
-      }
-    },
     "webAppName": {
       "type": "string",
-      "defaultValue": "[format('web-{0}', uniqueString(resourceGroup().id))]",
+      "defaultValue": "[format('webApp-{0}', uniqueString(resourceGroup().id))]",
+      "minLength": 2,
       "metadata": {
-        "description": "Name of the App Service Web App"
+        "description": "Web app name."
       }
     },
     "location": {
@@ -43,20 +23,44 @@
       "metadata": {
         "description": "Location for all resources."
       }
+    },
+    "sku": {
+      "type": "string",
+      "defaultValue": "F1",
+      "metadata": {
+        "description": "The SKU of App Service Plan."
+      }
+    },
+    "linuxFxVersion": {
+      "type": "string",
+      "defaultValue": "DOTNETCORE|3.0",
+      "metadata": {
+        "description": "The Runtime stack of current web app"
+      }
+    },
+    "repoUrl": {
+      "type": "string",
+      "defaultValue": " ",
+      "metadata": {
+        "description": "Optional Git Repo URL"
+      }
     }
+  },
+  "variables": {
+    "appServicePlanPortalName": "[format('AppServicePlan-{0}', parameters('webAppName'))]"
   },
   "resources": [
     {
       "type": "Microsoft.Web/serverfarms",
       "apiVersion": "2021-02-01",
-      "name": "[parameters('serverFarmName')]",
+      "name": "[variables('appServicePlanPortalName')]",
       "location": "[parameters('location')]",
-      "tags": {
-        "displayName": "[parameters('serverFarmName')]"
-      },
       "sku": {
-        "name": "F1",
-        "capacity": 1
+        "name": "[parameters('sku')]"
+      },
+      "kind": "linux",
+      "properties": {
+        "reserved": true
       }
     },
     {
@@ -64,82 +68,35 @@
       "apiVersion": "2021-02-01",
       "name": "[parameters('webAppName')]",
       "location": "[parameters('location')]",
-      "tags": {
-        "displayName": "[parameters('webAppName')]"
-      },
       "properties": {
-        "serverFarmId": "[resourceId('Microsoft.Web/serverfarms', parameters('serverFarmName'))]",
+        "httpsOnly": true,
+        "serverFarmId": "[resourceId('Microsoft.Web/serverfarms', variables('appServicePlanPortalName'))]",
         "siteConfig": {
-          "ftpsState": "FtpsOnly",
+          "linuxFxVersion": "[parameters('linuxFxVersion')]",
           "minTlsVersion": "1.2",
-          "scmMinTlsVersion": "1.2"
-        },
-        "httpsOnly": true
+          "ftpsState": "FtpsOnly"
+        }
       },
       "identity": {
         "type": "SystemAssigned"
       },
       "dependsOn": [
-        "[resourceId('Microsoft.Web/serverfarms', parameters('serverFarmName'))]"
+        "[resourceId('Microsoft.Web/serverfarms', variables('appServicePlanPortalName'))]"
       ]
     },
     {
-      "type": "Microsoft.Cdn/profiles",
-      "apiVersion": "2021-06-01",
-      "name": "[parameters('profileName')]",
-      "location": "[parameters('location')]",
-      "tags": {
-        "displayName": "[parameters('profileName')]"
-      },
-      "sku": {
-        "name": "Standard_Microsoft"
-      },
-      "properties": {}
-    },
-    {
-      "type": "Microsoft.Cdn/profiles/endpoints",
-      "apiVersion": "2021-06-01",
-      "name": "[format('{0}/{1}', parameters('profileName'), parameters('endpointName'))]",
-      "location": "[parameters('location')]",
-      "tags": {
-        "displayName": "[parameters('endpointName')]"
-      },
+      "condition": "[contains(parameters('repoUrl'), 'http')]",
+      "type": "Microsoft.Web/sites/sourcecontrols",
+      "apiVersion": "2021-02-01",
+      "name": "[format('{0}/{1}', parameters('webAppName'), 'web')]",
       "properties": {
-        "originHostHeader": "[reference(resourceId('Microsoft.Web/sites', parameters('webAppName'))).hostNames[0]]",
-        "isHttpAllowed": true,
-        "isHttpsAllowed": true,
-        "queryStringCachingBehavior": "IgnoreQueryString",
-        "contentTypesToCompress": [
-          "text/plain",
-          "text/html",
-          "text/css",
-          "application/x-javascript",
-          "text/javascript"
-        ],
-        "isCompressionEnabled": true,
-        "origins": [
-          {
-            "name": "origin1",
-            "properties": {
-              "hostName": "[reference(resourceId('Microsoft.Web/sites', parameters('webAppName'))).hostNames[0]]"
-            }
-          }
-        ]
+        "repoUrl": "[parameters('repoUrl')]",
+        "branch": "master",
+        "isManualIntegration": true
       },
       "dependsOn": [
-        "[resourceId('Microsoft.Cdn/profiles', parameters('profileName'))]",
         "[resourceId('Microsoft.Web/sites', parameters('webAppName'))]"
       ]
     }
-  ],
-  "outputs": {
-    "hostName": {
-      "type": "string",
-      "value": "[reference(resourceId('Microsoft.Cdn/profiles/endpoints', parameters('profileName'), parameters('endpointName'))).hostName]"
-    },
-    "originHostHeader": {
-      "type": "string",
-      "value": "[reference(resourceId('Microsoft.Cdn/profiles/endpoints', parameters('profileName'), parameters('endpointName'))).originHostHeader]"
-    }
-  }
+  ]
 }
